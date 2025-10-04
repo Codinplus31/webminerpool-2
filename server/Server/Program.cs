@@ -608,8 +608,8 @@ int port = int.Parse(portStr);
 
 string localAddr = (certAvailable ? "wss://" : "ws://") + "0.0.0.0:" + port;     
             WebSocketServer server = new WebSocketServer(localAddr);
-            server.Certificate = cert;
-
+            //server.Certificate = cert;
+             server.Certificate = null;
             FleckLog.LogAction = (level, message, ex) =>
             {
                 switch (level)
