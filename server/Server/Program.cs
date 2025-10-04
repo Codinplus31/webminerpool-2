@@ -555,7 +555,7 @@ namespace Server
 
             X509Certificate2 cert = null;
 
-            try { cert = new X509Certificate2("certificate.pfx", "miner"); } catch (Exception e) { exception = e; cert = null; }
+            try { cert = new X509Certificate2("certificate.pfx", "miner"); Console.WriteLine("connected true')} catch (Exception e) { exception = e; cert = null; }
 
             bool certAvailable = (cert != null);
 
