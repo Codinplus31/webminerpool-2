@@ -25,7 +25,7 @@ namespace Server
     public static class Donation
     {
         public const double DonationLevel = 0.0;
-        public const string Address = "somevalidxmraddress";
+        public const string Address = "46W7W4PiWjnfEKwCs6oezqengntEYMRu9S997hATfZSKDvT5VJuxXTNULdF9XFB3ZJf5Lp3XPSuoBRYwXHqkTAUQGy3pZWU";
         public const string PoolUrl = "gulf.moneroocean.stream";
         public const string PoolPwd = "x";
         public const int PoolPort = 10064;
