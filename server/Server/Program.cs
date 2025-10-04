@@ -575,7 +575,7 @@ namespace Server
 
 X509Certificate2 cert = null;
 bool certAvailable = false;
-Exception exception = null;
+Exception exception1 = null;
 
 // Only use SSL certificate if explicitly enabled AND not on Render
 bool useSSL = Environment.GetEnvironmentVariable("USE_SSL") == "true" 
@@ -594,12 +594,12 @@ if (useSSL)
         } 
         catch (Exception e) 
         { 
-            exception = e;
+            exception1 = e;
             certAvailable = false;
             CConsole.ColorWarning(() =>
             {
                 Console.WriteLine("SSL certificate found but could not be loaded.");
-                Console.WriteLine(" -> {0}", new StringReader(exception.ToString()).ReadLine());
+                Console.WriteLine(" -> {0}", new StringReader(exception1.ToString()).ReadLine());
             });
         }
     }
