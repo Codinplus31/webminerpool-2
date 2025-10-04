@@ -730,7 +730,7 @@ catch (Exception ex)
     RemoveClient(socket.ConnectionInfo.Id);
 };
     
-    socket.OnMessage = message =>
+    
     socket.OnMessage = message =>
 {
     string ipadr = string.Empty;
