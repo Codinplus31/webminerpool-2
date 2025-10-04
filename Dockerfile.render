@@ -36,6 +36,9 @@ RUN cd server && dotnet build -c Release
 COPY server/pools.json ./
 COPY server/logins.json ./
 
+# Copy SSL certificate (ADD THIS LINE)
+COPY certificate.pfx ./
+
 # Copy built files
 RUN cp hash_cn/libhash/libhash.so ./ && \
     cp server/bin/Release/net8.0/* ./
