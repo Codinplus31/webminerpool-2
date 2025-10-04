@@ -666,50 +666,96 @@ server.Certificate = certAvailable ? cert : null;
             server.ListenerSocket.NoDelay = false;
 
             server.Start(socket =>
-            {
-                socket.OnOpen = () =>
-                {
-                    string ipadr = string.Empty;
-                    try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+{
+    socket.OnOpen = () =>
+    {
+        string ipadr = string.Empty;
+        try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
 
-                    Client client = new Client();
-                    client.WebSocket = socket;
-                    client.Created = client.LastPoolJobTime = DateTime.Now;
+        Client client = new Client();
+        client.WebSocket = socket;
+        client.Created = client.LastPoolJobTime = DateTime.Now;
 
-                    Guid guid = socket.ConnectionInfo.Id;
-                    clients.TryAdd(guid, client);
+        Guid guid = socket.ConnectionInfo.Id;
+        clients.TryAdd(guid, client);
 
-                    Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
-                };
-                socket.OnClose = () =>
-                {
-                    Guid guid = socket.ConnectionInfo.Id;
-                    RemoveClient(socket.ConnectionInfo.Id);
+        Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
+        
+        // Send initial connection info to help debug
+        try 
+        {
+            string welcomeMsg = PoolList.JsonPools;
+            socket.Send(welcomeMsg);
+            Console.WriteLine("{0}: sent pool list", guid);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("{0}: failed to send pool list - {1}", guid, ex.Message);
+        }
+    };
+    
+    socket.OnClose = () =>
+    {
+        Guid guid = socket.ConnectionInfo.Id;
+        
+        Client client;
+        if (clients.TryGetValue(guid, out client))
+        {
+            Console.WriteLine("{0}: closed (had handshake: {1}, pool: {2})", 
+                guid, client.GotHandshake, client.Pool ?? "none");
+        }
+        else
+        {
+            Console.WriteLine("{0}: closed (no client data)", guid);
+        }
+        
+        RemoveClient(socket.ConnectionInfo.Id);
+    };
+    
+    socket.OnError = error =>
+    {
+        Guid guid = socket.ConnectionInfo.Id;
+        Console.WriteLine("{0}: error - {1}", guid, error.Message);
+        RemoveClient(socket.ConnectionInfo.Id);
+    };
+    
+    socket.OnMessage = message =>
+    {
+        string ipadr = string.Empty;
+        try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
 
-                    Console.WriteLine(guid + ": closed");
-                };
-                socket.OnError = error =>
-                {
-                    Guid guid = socket.ConnectionInfo.Id;
-                    RemoveClient(socket.ConnectionInfo.Id);
+        Guid guid = socket.ConnectionInfo.Id;
+        
+        Console.WriteLine("{0}: received message (length: {1})", guid, message.Length);
 
-                    Console.WriteLine(guid + ": unexpected close");
-                };
-                socket.OnMessage = message =>
-                {
-                    string ipadr = string.Empty;
-                    try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+        if (message.Length > 3000)
+        {
+            Console.WriteLine("{0}: message too long, disconnecting", guid);
+            RemoveClient(guid);
+            return;
+        }
 
-                    Guid guid = socket.ConnectionInfo.Id;
+        JsonData msg = null;
+        try
+        {
+            msg = message.FromJson<JsonData>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("{0}: failed to parse JSON - {1}", guid, ex.Message);
+            Console.WriteLine("{0}: message was: {1}", guid, message.Substring(0, Math.Min(100, message.Length)));
+            RemoveClient(guid);
+            return;
+        }
+        
+        if (msg == null || !msg.ContainsKey("identifier"))
+        {
+            Console.WriteLine("{0}: invalid message format", guid);
+            RemoveClient(guid);
+            return;
+        }
 
-                    if (message.Length > 3000)
-                    {
-                        RemoveClient(guid); // that can't be valid, do not even try to parse
-                    }
-
-                    JsonData msg = message.FromJson<JsonData>();
-                    if (msg == null || !msg.ContainsKey("identifier")) return;
-
+        // ... rest of your OnMessage code
                     Client client = null;
 
                     // in very rare occasions, we get interference with onopen()
