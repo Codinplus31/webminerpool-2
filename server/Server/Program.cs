@@ -668,56 +668,54 @@ server.Certificate = certAvailable ? cert : null;
             server.Start(socket =>
 {
     socket.OnOpen = () =>
-    {
-        string ipadr = string.Empty;
-        try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+{
+    string ipadr = string.Empty;
+    try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
 
-        Client client = new Client();
-        client.WebSocket = socket;
-        client.Created = client.LastPoolJobTime = DateTime.Now;
+    Client client = new Client();
+    client.WebSocket = socket;
+    client.Created = client.LastPoolJobTime = DateTime.Now;
 
-        Guid guid = socket.ConnectionInfo.Id;
-        clients.TryAdd(guid, client);
+    Guid guid = socket.ConnectionInfo.Id;
+    clients.TryAdd(guid, client);
 
-        Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
-        
-        // Send initial connection info to help debug
-        try 
-        {
-            string welcomeMsg = PoolList.JsonPools;
-            socket.Send(welcomeMsg);
-            Console.WriteLine("{0}: sent pool list", guid);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("{0}: failed to send pool list - {1}", guid, ex.Message);
-        }
-    };
+    Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
+    
+    // Don't send pool list immediately - wait for client to request it
+    // This prevents issues with health checks and non-WebSocket probes
+};
     
     socket.OnClose = () =>
+{
+    Guid guid = socket.ConnectionInfo.Id;
+    
+    Client client;
+    if (clients.TryGetValue(guid, out client))
     {
-        Guid guid = socket.ConnectionInfo.Id;
-        
-        Client client;
-        if (clients.TryGetValue(guid, out client))
+        // Only log meaningful disconnections
+        if (client.GotHandshake)
         {
-            Console.WriteLine("{0}: closed (had handshake: {1}, pool: {2})", 
-                guid, client.GotHandshake, client.Pool ?? "none");
+            Console.WriteLine("{0}: client disconnected (pool: {1})", 
+                guid, client.Pool ?? "none");
         }
-        else
-        {
-            Console.WriteLine("{0}: closed (no client data)", guid);
-        }
-        
-        RemoveClient(socket.ConnectionInfo.Id);
-    };
+    }
+    
+    RemoveClient(socket.ConnectionInfo.Id);
+};
     
     socket.OnError = error =>
+{
+    Guid guid = socket.ConnectionInfo.Id;
+    
+    Client client;
+    if (clients.TryGetValue(guid, out client) && client.GotHandshake)
     {
-        Guid guid = socket.ConnectionInfo.Id;
+        // Only log errors for actual clients, not health checks
         Console.WriteLine("{0}: error - {1}", guid, error.Message);
-        RemoveClient(socket.ConnectionInfo.Id);
-    };
+    }
+    
+    RemoveClient(socket.ConnectionInfo.Id);
+};
     
     socket.OnMessage = message =>
     {
