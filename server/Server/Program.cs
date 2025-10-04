@@ -663,8 +663,21 @@ server.Certificate = certAvailable ? cert : null;
             };
 
             server.RestartAfterListenError = true;
-            server.ListenerSocket.NoDelay = false;
+server.ListenerSocket.NoDelay = true;  // Change to true for better responsiveness
 
+// Add keep-alive settings
+try
+{
+    server.ListenerSocket.SetSocketOption(
+        System.Net.Sockets.SocketOptionLevel.Socket,
+        System.Net.Sockets.SocketOptionName.KeepAlive,
+        true
+    );
+}
+catch (Exception ex)
+{
+    Console.WriteLine("Could not set keep-alive: {0}", ex.Message);
+}
             server.Start(socket =>
 {
     socket.OnOpen = () =>
@@ -718,63 +731,56 @@ server.Certificate = certAvailable ? cert : null;
 };
     
     socket.OnMessage = message =>
+    socket.OnMessage = message =>
+{
+    string ipadr = string.Empty;
+    try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+
+    Guid guid = socket.ConnectionInfo.Id;
+
+    if (message.Length > 3000)
     {
-        string ipadr = string.Empty;
-        try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+        RemoveClient(guid);
+        return;
+    }
 
-        Guid guid = socket.ConnectionInfo.Id;
-        
-        Console.WriteLine("{0}: received message (length: {1})", guid, message.Length);
+    JsonData msg = message.FromJson<JsonData>();
+    if (msg == null || !msg.ContainsKey("identifier")) return;
 
-        if (message.Length > 3000)
-        {
-            Console.WriteLine("{0}: message too long, disconnecting", guid);
-            RemoveClient(guid);
-            return;
-        }
+    Client client = null;
 
-        JsonData msg = null;
+    // Retry logic for race conditions
+    for (int tries = 0; tries < 4; tries++)
+    {
+        if (clients.TryGetValue(guid, out client)) break;
+        Task.Run(async delegate { await Task.Delay(TimeSpan.FromSeconds(1)); }).Wait();
+    }
+
+    if (client == null)
+    {
+        RemoveClient(guid);
+        return;
+    }
+
+    string identifier = (string)msg["identifier"];
+
+    // Send pool list on first valid message
+    if (!client.GotPoolInfo)
+    {
         try
         {
-            msg = message.FromJson<JsonData>();
+            client.WebSocket.Send(PoolList.JsonPools);
+            client.GotPoolInfo = true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine("{0}: failed to parse JSON - {1}", guid, ex.Message);
-            Console.WriteLine("{0}: message was: {1}", guid, message.Substring(0, Math.Min(100, message.Length)));
-            RemoveClient(guid);
-            return;
+            Console.WriteLine("{0}: failed to send pool info - {1}", guid, ex.Message);
         }
-        
-        if (msg == null || !msg.ContainsKey("identifier"))
-        {
-            Console.WriteLine("{0}: invalid message format", guid);
-            RemoveClient(guid);
-            return;
-        }
+    }
 
-        // ... rest of your OnMessage code
-                    Client client = null;
-
-                    // in very rare occasions, we get interference with onopen()
-                    // due to async code. wait a second and retry.
-                    for (int tries = 0; tries < 4; tries++)
-                    {
-                        if (clients.TryGetValue(guid, out client)) break;
-                        Task.Run(async delegate { await Task.Delay(TimeSpan.FromSeconds(1)); }).Wait();
-                    }
-
-                    if (client == null)
-                    {
-                        // famous comment: this should not happen
-                        RemoveClient(guid);
-                        return;
-                    }
-
-                    string identifier = (string)msg["identifier"];
-
-                    if (identifier == "handshake")
-                    {
+    if (identifier == "handshake")
+    {
+        // ... rest of your handshake code
                         if (client.GotHandshake)
                         {
                             // no merci for malformed data.
