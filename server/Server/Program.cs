@@ -552,7 +552,7 @@ namespace Server
                     CConsole.ColorAlert(() => Console.WriteLine("Error while reading logins: {0}", ex));
                 }
             }
-
+/*
             X509Certificate2 cert = null;
 
             try { 
@@ -571,7 +571,37 @@ namespace Server
                 Console.WriteLine("SSL certificate could not be loaded. Secure connection disabled.");
                 Console.WriteLine(" -> {0}", new StringReader(exception.ToString()).ReadLine());
             });
+*/
 
+X509Certificate2 cert = null;
+bool certAvailable = false;
+
+// Skip certificate loading in production/cloud environments
+string certPath = "certificate.pfx";
+if (File.Exists(certPath))
+{
+    try 
+    { 
+        cert = new X509Certificate2(certPath, "miner");
+        certAvailable = true;
+    } 
+    catch (Exception e) 
+    { 
+        exception = e; 
+        cert = null;
+        CConsole.ColorWarning(() =>
+        {
+            Console.WriteLine("SSL certificate found but could not be loaded.");
+            Console.WriteLine(" -> {0}", new StringReader(exception.ToString()).ReadLine());
+        });
+    }
+}
+else
+{
+    Console.WriteLine("No SSL certificate found. Running without encryption (ws://).");
+}
+
+            
             // Get port from environment variable (Render provides this)
 string portStr = Environment.GetEnvironmentVariable("PORT") ?? "8181";
 int port = int.Parse(portStr);
