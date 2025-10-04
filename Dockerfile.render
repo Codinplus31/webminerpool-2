@@ -1,0 +1,49 @@
+# Alternative Dockerfile specifically for Render
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DOTNET_ROOT=/usr/share/dotnet
+ENV PATH=$PATH:/usr/share/dotnet
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    build-essential \
+    gcc \
+    make \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install .NET 5.0
+RUN wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-8.0 \
+    && rm packages-microsoft-prod.deb
+
+WORKDIR /app
+
+# Copy and build hash library
+COPY hash_cn/libhash ./hash_cn/libhash
+RUN cd hash_cn/libhash && make
+
+# Copy and build server
+COPY server ./server
+RUN cd server && dotnet build -c Release
+
+# Copy configuration files
+COPY server/pools.json ./
+COPY server/logins.json ./
+
+# Copy built files
+RUN cp hash_cn/libhash/libhash.so ./ && \
+    cp server/bin/Release/net8.0/* ./
+
+# Create startup script
+COPY start.sh ./
+RUN chmod +x start.sh
+
+EXPOSE $PORT
+
+CMD ["./start.sh"]
