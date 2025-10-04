@@ -692,47 +692,106 @@ catch (Exception ex)
     Guid guid = socket.ConnectionInfo.Id;
     clients.TryAdd(guid, client);
 
-    Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
-    
-    // Don't send pool list immediately - wait for client to request it
-    // This prevents issues with health checks and non-WebSocket probes
+string localAddr = "ws://0.0.0.0:" + port;
+WebSocketServer server = new WebSocketServer(localAddr);
+server.Certificate = null;
+
+FleckLog.LogAction = (level, message, ex) =>
+{
+    switch (level)
+    {
+        case LogLevel.Debug:
+#if (DEBUG)
+            Console.WriteLine("FLECK (Debug): " + message);
+#endif
+            break;
+        case LogLevel.Error:
+            if (ex != null && !string.IsNullOrEmpty(ex.Message))
+            {
+                CConsole.ColorAlert(() => Console.WriteLine("FLECK: " + message + " " + ex.Message));
+
+                exceptionCounter++;
+                if ((exceptionCounter % 200) == 0)
+                {
+                    Helper.WriteTextAsyncWrapper("fleck_error.txt", ex.ToString());
+                }
+            }
+            else Console.WriteLine("FLECK: " + message);
+            break;
+        case LogLevel.Warn:
+            if (ex != null && !string.IsNullOrEmpty(ex.Message))
+            {
+                Console.WriteLine("FLECK: " + message + " " + ex.Message);
+
+                exceptionCounter++;
+                if ((exceptionCounter % 200) == 0)
+                {
+                    Helper.WriteTextAsyncWrapper("fleck_warn.txt", ex.ToString());
+                }
+            }
+            else Console.WriteLine("FLECK: " + message);
+            break;
+        default:
+            Console.WriteLine("FLECK: " + message);
+            break;
+    }
 };
+
+server.RestartAfterListenError = true;
+server.ListenerSocket.NoDelay = true;
+
+server.Start(socket =>
+{
+    socket.OnOpen = () =>
+    {
+        string ipadr = string.Empty;
+        try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
+
+        Client client = new Client();
+        client.WebSocket = socket;
+        client.Created = client.LastPoolJobTime = DateTime.Now;
+
+        Guid guid = socket.ConnectionInfo.Id;
+        clients.TryAdd(guid, client);
+
+        Console.WriteLine("{0}: connected with ip {1}", guid, ipadr);
+    };
     
     socket.OnClose = () =>
-{
-    Guid guid = socket.ConnectionInfo.Id;
-    
-    Client client;
-    if (clients.TryGetValue(guid, out client))
     {
-        // Only log meaningful disconnections
-        if (client.GotHandshake)
+        Guid guid = socket.ConnectionInfo.Id;
+        
+        Client client;
+        if (clients.TryGetValue(guid, out client))
         {
-            Console.WriteLine("{0}: client disconnected (pool: {1})", 
-                guid, client.Pool ?? "none");
+            // Only log meaningful disconnections
+            if (client.GotHandshake)
+            {
+                Console.WriteLine("{0}: client disconnected (pool: {1})", 
+                    guid, client.Pool ?? "none");
+            }
         }
-    }
-    
-    RemoveClient(socket.ConnectionInfo.Id);
-};
+        
+        RemoveClient(socket.ConnectionInfo.Id);
+    };
     
     socket.OnError = error =>
-{
-    Guid guid = socket.ConnectionInfo.Id;
-    
-    Client client;
-    if (clients.TryGetValue(guid, out client) && client.GotHandshake)
     {
-        // Only log errors for actual clients, not health checks
-        Console.WriteLine("{0}: error - {1}", guid, error.Message);
-    }
-    
-    RemoveClient(socket.ConnectionInfo.Id);
-};
-    
+        Guid guid = socket.ConnectionInfo.Id;
+        
+        Client client;
+        if (clients.TryGetValue(guid, out client) && client.GotHandshake)
+        {
+            // Only log errors for actual clients, not health checks
+            Console.WriteLine("{0}: error - {1}", guid, error.Message);
+        }
+        
+        RemoveClient(socket.ConnectionInfo.Id);
+    };
     
     socket.OnMessage = message =>
-{
+    {
+        // ... rest of your OnMessage handler
     string ipadr = string.Empty;
     try { ipadr = socket.ConnectionInfo.ClientIpAddress; } catch { }
 
