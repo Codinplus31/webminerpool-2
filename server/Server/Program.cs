@@ -575,41 +575,50 @@ namespace Server
 
 X509Certificate2 cert = null;
 bool certAvailable = false;
+Exception exception = null;
 
-// Skip certificate loading in production/cloud environments
-string certPath = "certificate.pfx";
-if (File.Exists(certPath))
+// Only use SSL certificate if explicitly enabled AND not on Render
+bool useSSL = Environment.GetEnvironmentVariable("USE_SSL") == "true" 
+              && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RENDER"));
+
+if (useSSL)
 {
-    try 
-    { 
-        cert = new X509Certificate2(certPath, "miner");
-        certAvailable = true;
-    } 
-    catch (Exception e) 
-    { 
-        exception = e; 
-        cert = null;
-        CConsole.ColorWarning(() =>
-        {
-            Console.WriteLine("SSL certificate found but could not be loaded.");
-            Console.WriteLine(" -> {0}", new StringReader(exception.ToString()).ReadLine());
-        });
+    string certPath = "certificate.pfx";
+    if (File.Exists(certPath))
+    {
+        try 
+        { 
+            cert = new X509Certificate2(certPath, "miner");
+            certAvailable = true;
+            Console.WriteLine("SSL certificate loaded successfully.");
+        } 
+        catch (Exception e) 
+        { 
+            exception = e;
+            certAvailable = false;
+            CConsole.ColorWarning(() =>
+            {
+                Console.WriteLine("SSL certificate found but could not be loaded.");
+                Console.WriteLine(" -> {0}", new StringReader(exception.ToString()).ReadLine());
+            });
+        }
     }
 }
 else
 {
-    Console.WriteLine("No SSL certificate found. Running without encryption (ws://).");
+    Console.WriteLine("SSL disabled - cloud platform handles SSL termination");
 }
 
-            
-            // Get port from environment variable (Render provides this)
+// Get port from environment variable
 string portStr = Environment.GetEnvironmentVariable("PORT") ?? "8181";
 int port = int.Parse(portStr);
 
-string localAddr = (certAvailable ? "wss://" : "ws://") + "0.0.0.0:" + port;     
-            WebSocketServer server = new WebSocketServer(localAddr);
-            //server.Certificate = cert;
-             server.Certificate = null;
+// Use ws:// on cloud, wss:// locally if certificate available
+string protocol = (certAvailable && useSSL) ? "wss://" : "ws://";
+string localAddr = protocol + "0.0.0.0:" + port;
+
+WebSocketServer server = new WebSocketServer(localAddr);
+server.Certificate = certAvailable ? cert : null;
             FleckLog.LogAction = (level, message, ex) =>
             {
                 switch (level)
